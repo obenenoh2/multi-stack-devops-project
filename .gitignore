@@ -1,0 +1,64 @@
+# Terraform state files (contains sensitive data)
+*.tfstate
+*.tfstate.*
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# AWS credentials and keys
+*.pem
+*.key
+*.ppk
+id_rsa
+id_rsa.pub
+keys/
+
+# Docker Hub credentials
+.docker/
+config.json
+
+# Environment variables
+.env
+.env.*
+*.secret
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+
+# Ansible
+*.retry
+ansible/inventory_*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# .NET
+bin/
+obj/
+*.user
+*.userosscache
+*.sln.docstates

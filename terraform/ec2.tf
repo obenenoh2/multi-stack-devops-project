@@ -1,0 +1,69 @@
+# Data source for Amazon Linux 2 AMI
+data "aws_ami" "amazon_linux_2" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# Key pair
+resource "aws_key_pair" "kingsly" {
+  key_name   = var.key_name
+  public_key = file("~/.ssh/id_rsa.pub")
+}
+
+# Frontend EC2 Instance (Vote + Result apps)
+resource "aws_instance" "frontend" {
+  ami                    = data.aws_ami.amazon_linux_2.id
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.public.id
+  vpc_security_group_ids = [aws_security_group.frontend.id]
+  key_name               = aws_key_pair.kingsly.key_name
+
+  associate_public_ip_address = true
+
+  tags = {
+    Name = "kingsly-frontend-${var.environment}"
+    Role = "frontend"
+  }
+}
+
+# Backend EC2 Instance (Redis + Worker)
+resource "aws_instance" "backend" {
+  ami                    = data.aws_ami.amazon_linux_2.id
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.private.id
+  vpc_security_group_ids = [aws_security_group.backend.id]
+  key_name               = aws_key_pair.kingsly.key_name
+
+  associate_public_ip_address = false
+
+  tags = {
+    Name = "kingsly-backend-${var.environment}"
+    Role = "backend"
+  }
+}
+
+# Database EC2 Instance (PostgreSQL)
+resource "aws_instance" "database" {
+  ami                    = data.aws_ami.amazon_linux_2.id
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.private.id
+  vpc_security_group_ids = [aws_security_group.database.id]
+  key_name               = aws_key_pair.kingsly.key_name
+
+  associate_public_ip_address = false
+
+  tags = {
+    Name = "kingsly-database-${var.environment}"
+    Role = "database"
+  }
+}

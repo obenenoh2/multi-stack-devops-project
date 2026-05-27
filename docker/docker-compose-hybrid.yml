@@ -1,0 +1,69 @@
+services:
+  vote:
+    image: kingsly/vote:latest
+    container_name: kingsly-vote
+    ports:
+      - "5000:80"
+    depends_on:
+      - redis
+    networks:
+      - front-tier
+      - back-tier
+    environment:
+      - REDIS_HOST=redis
+    restart: unless-stopped
+
+  result:
+    image: kingsly/result:latest
+    container_name: kingsly-result
+    ports:
+      - "5001:80"
+    depends_on:
+      - db
+    networks:
+      - front-tier
+      - back-tier
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    restart: unless-stopped
+
+  worker:
+    image: dockersamples/examplevotingapp_worker:latest
+    container_name: kingsly-worker-working
+    networks:
+      - back-tier
+    environment:
+      - REDIS_HOST=redis
+      - POSTGRES_HOST=db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    container_name: kingsly-redis
+    networks:
+      - back-tier
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: kingsly-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=votes
+    networks:
+      - back-tier
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+networks:
+  front-tier:
+  back-tier:
+
+volumes:
+  postgres_data:
