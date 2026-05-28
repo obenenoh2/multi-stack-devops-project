@@ -1,0 +1,39 @@
+---
+- name: Cleanup all containers and images
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Stop and remove all containers
+      docker_container:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - vote-app
+        - result-app
+        - redis-cache
+        - worker-app
+        - postgres-db
+        - psql-client
+      ignore_errors: yes
+
+    - name: Remove Docker images
+      docker_image:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "obenenoh2/vote:latest"
+        - "obenenoh2/result:latest"
+        - "obenenoh2/worker:latest"
+        - redis:alpine
+        - postgres:15-alpine
+      ignore_errors: yes
+
+    - name: Remove Docker volumes
+      shell: |
+        docker volume rm postgres_data 2>/dev/null || true
+      ignore_errors: yes
+
+    - name: Display cleanup message
+      debug:
+        msg: "✅ Cleanup complete on {{ inventory_hostname }}"

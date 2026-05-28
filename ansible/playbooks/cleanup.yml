@@ -1,0 +1,33 @@
+---
+- name: Stop and remove all containers
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Stop containers via docker-compose
+      docker_compose:
+        project_src: /home/ec2-user/voting-app
+        state: absent
+        remove_volumes: yes
+      ignore_errors: yes
+
+    - name: Remove Docker images
+      docker_image:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - obenenoh2/vote:latest
+        - obenenoh2/result:latest
+        - obenenoh2/worker:latest
+        - redis:alpine
+        - postgres:15-alpine
+      ignore_errors: yes
+
+    - name: Remove app directory
+      file:
+        path: /home/ec2-user/voting-app
+        state: absent
+
+    - name: Display message
+      debug:
+        msg: "✅ Cleanup complete on {{ inventory_hostname }}"

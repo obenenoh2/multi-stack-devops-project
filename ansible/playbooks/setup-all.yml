@@ -1,0 +1,165 @@
+---
+# ============================================
+# PART 1: INSTALL DOCKER ON ALL INSTANCES
+# ============================================
+- name: Install Docker on all EC2 instances
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Update yum cache
+      yum:
+        update_cache: yes
+
+    - name: Install Docker
+      yum:
+        name: docker
+        state: present
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
+# ============================================
+# PART 2: DEPLOY DATABASE (PostgreSQL)
+# ============================================
+- name: Deploy PostgreSQL on Database EC2
+  hosts: database
+  become: yes
+  
+  tasks:
+    - name: Pull PostgreSQL image
+      shell: docker pull postgres:15-alpine
+
+    - name: Run PostgreSQL container
+      shell: |
+        docker rm -f postgres-db 2>/dev/null || true
+        docker run -d --name postgres-db \
+          -p 5432:5432 \
+          -e POSTGRES_USER=postgres \
+          -e POSTGRES_PASSWORD=postgres \
+          -e POSTGRES_DB=postgres \
+          -v postgres_data:/var/lib/postgresql/data \
+          --restart unless-stopped \
+          postgres:15-alpine
+
+    - name: Wait for PostgreSQL
+      pause:
+        seconds: 15
+
+    - name: Create votes table
+      shell: |
+        docker exec postgres-db psql -U postgres -d postgres -c "
+        CREATE TABLE IF NOT EXISTS votes (
+          id SERIAL PRIMARY KEY,
+          vote VARCHAR(10) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );"
+
+# ============================================
+# PART 3: DEPLOY BACKEND (Redis + Worker)
+# ============================================
+- name: Deploy Redis and Worker on Backend EC2
+  hosts: backend
+  become: yes
+  
+  tasks:
+    - name: Pull images
+      shell: |
+        docker pull redis:alpine
+        docker pull obenenoh2/worker:latest
+
+    - name: Run Redis container
+      shell: |
+        docker rm -f redis-cache 2>/dev/null || true
+        docker run -d --name redis-cache \
+          -p 6379:6379 \
+          --restart unless-stopped \
+          redis:alpine
+
+    - name: Run Worker container
+      shell: |
+        docker rm -f worker-app 2>/dev/null || true
+        docker run -d --name worker-app \
+          -e REDIS_HOST=10.0.2.188 \
+          -e POSTGRES_HOST=10.0.2.83 \
+          -e POSTGRES_USER=postgres \
+          -e POSTGRES_PASSWORD=postgres \
+          --restart unless-stopped \
+          obenenoh2/worker:latest
+
+# ============================================
+# PART 4: DEPLOY FRONTEND (Vote + Result)
+# ============================================
+- name: Deploy Vote and Result on Frontend EC2
+  hosts: frontend
+  become: yes
+  
+  tasks:
+    - name: Pull images
+      shell: |
+        docker pull obenenoh2/vote:latest
+        docker pull obenenoh2/result:latest
+
+    - name: Stop old containers
+      shell: |
+        docker stop vote-app result-app 2>/dev/null || true
+        docker rm vote-app result-app 2>/dev/null || true
+
+    - name: Run Vote container
+      shell: |
+        docker run -d --name vote-app \
+          -p 80:80 \
+          -e REDIS_HOST=10.0.2.188 \
+          --restart unless-stopped \
+          obenenoh2/vote:latest
+
+    - name: Run Result container
+      shell: |
+        docker run -d --name result-app \
+          -p 8080:80 \
+          -e POSTGRES_HOST=10.0.2.83 \
+          -e POSTGRES_USER=postgres \
+          -e POSTGRES_PASSWORD=postgres \
+          --restart unless-stopped \
+          obenenoh2/result:latest
+
+# ============================================
+# PART 5: VERIFY DEPLOYMENT
+# ============================================
+- name: Verify all services
+  hosts: frontend
+  become: no
+  
+  tasks:
+    - name: Display success message
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║     ✅ DEPLOYMENT COMPLETE!                                  ║
+          ╠══════════════════════════════════════════════════════════════╣
+          ║                                                              ║
+          ║  🌐 Access your application:                                 ║
+          ║     Vote App:    http://44.200.212.23                        ║
+          ║     Results:     http://44.200.212.23:8080                   ║
+          ║                                                              ║
+          ║  📍 Frontend EC2 (44.200.212.23)                             ║
+          ║     ├── Vote App (Port 80)                                   ║
+          ║     └── Results App (Port 8080)                              ║
+          ║                                                              ║
+          ║  📍 Backend EC2 (10.0.2.188)                                 ║
+          ║     ├── Redis (Port 6379)                                    ║
+          ║     └── Worker (Processing)                                  ║
+          ║                                                              ║
+          ║  📍 Database EC2 (10.0.2.83)                                 ║
+          ║     └── PostgreSQL (Port 5432)                               ║
+          ║                                                              ║
+          ╚══════════════════════════════════════════════════════════════╝

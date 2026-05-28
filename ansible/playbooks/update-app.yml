@@ -1,0 +1,37 @@
+---
+- name: Update only the vote and result containers
+  hosts: frontend
+  become: yes
+  vars:
+    docker_hub_username: "obenenoh2"
+
+  tasks:
+    - name: Pull latest vote image
+      docker_image:
+        name: "{{ docker_hub_username }}/vote:latest"
+        source: pull
+
+    - name: Pull latest result image
+      docker_image:
+        name: "{{ docker_hub_username }}/result:latest"
+        source: pull
+
+    - name: Restart containers
+      docker_compose:
+        project_src: /home/ec2-user/voting-app
+        state: present
+        restarted: yes
+
+    - name: Wait for containers to be ready
+      pause:
+        seconds: 5
+
+    - name: Verify vote app
+      uri:
+        url: http://localhost:80
+        status_code: 200
+      register: vote_check
+
+    - name: Display status
+      debug:
+        msg: "✅ Update complete! Vote app: http://44.200.212.23"

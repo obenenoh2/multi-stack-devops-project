@@ -1,0 +1,220 @@
+---
+# ============================================
+# 1. INSTALL DOCKER ON ALL INSTANCES
+# ============================================
+- name: Install Docker on all EC2 instances
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Update yum cache
+      yum:
+        update_cache: yes
+
+    - name: Install Docker using amazon-linux-extras
+      shell: |
+        amazon-linux-extras install docker -y
+      args:
+        creates: /usr/bin/docker
+
+    - name: Install python3-pip
+      yum:
+        name: python3-pip
+        state: present
+
+    - name: Install docker-py for Ansible Docker module
+      pip:
+        name: docker
+        executable: pip3
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
+# ============================================
+# 2. DEPLOY DATABASE (PostgreSQL)
+# ============================================
+- name: Deploy PostgreSQL on Database EC2
+  hosts: database
+  become: yes
+  
+  tasks:
+    - name: Pull PostgreSQL image
+      docker_image:
+        name: postgres:15-alpine
+        source: pull
+
+    - name: Create PostgreSQL container
+      docker_container:
+        name: postgres-db
+        image: postgres:15-alpine
+        restart_policy: unless-stopped
+        ports:
+          - "5432:5432"
+        env:
+          POSTGRES_USER: "postgres"
+          POSTGRES_PASSWORD: "postgres"
+          POSTGRES_DB: "postgres"
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+
+    - name: Wait for PostgreSQL to be ready
+      pause:
+        seconds: 15
+
+    - name: Create votes table
+      docker_container:
+        name: psql-client
+        image: postgres:15-alpine
+        command: >
+          psql -h localhost -U postgres -d postgres -c
+          "CREATE TABLE IF NOT EXISTS votes (
+            id SERIAL PRIMARY KEY,
+            vote VARCHAR(10) NOT NULL,
+            vote_id VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );"
+        detach: no
+        rm: yes
+      ignore_errors: yes
+
+# ============================================
+# 3. DEPLOY BACKEND (Redis + Worker)
+# ============================================
+- name: Deploy Redis and Worker on Backend EC2
+  hosts: backend
+  become: yes
+  
+  tasks:
+    - name: Pull Redis image
+      docker_image:
+        name: redis:alpine
+        source: pull
+
+    - name: Pull Worker image
+      docker_image:
+        name: "{{ docker_hub_username }}/worker:latest"
+        source: pull
+
+    - name: Create Redis container
+      docker_container:
+        name: redis-cache
+        image: redis:alpine
+        restart_policy: unless-stopped
+        ports:
+          - "6379:6379"
+
+    - name: Create Worker container
+      docker_container:
+        name: worker-app
+        image: "{{ docker_hub_username }}/worker:latest"
+        restart_policy: unless-stopped
+        env:
+          REDIS_HOST: "{{ backend_private_ip }}"
+          POSTGRES_HOST: "{{ database_private_ip }}"
+          POSTGRES_USER: "postgres"
+          POSTGRES_PASSWORD: "postgres"
+
+# ============================================
+# 4. DEPLOY FRONTEND (Vote + Result)
+# ============================================
+- name: Deploy Vote and Result on Frontend EC2
+  hosts: frontend
+  become: yes
+  
+  tasks:
+    - name: Pull Vote image
+      docker_image:
+        name: "{{ docker_hub_username }}/vote:latest"
+        source: pull
+
+    - name: Pull Result image
+      docker_image:
+        name: "{{ docker_hub_username }}/result:latest"
+        source: pull
+
+    - name: Stop and remove existing containers
+      docker_container:
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - vote-app
+        - result-app
+      ignore_errors: yes
+
+    - name: Create Vote container
+      docker_container:
+        name: vote-app
+        image: "{{ docker_hub_username }}/vote:latest"
+        restart_policy: unless-stopped
+        ports:
+          - "80:80"
+        env:
+          REDIS_HOST: "{{ backend_private_ip }}"
+
+    - name: Create Result container
+      docker_container:
+        name: result-app
+        image: "{{ docker_hub_username }}/result:latest"
+        restart_policy: unless-stopped
+        ports:
+          - "8080:80"
+        env:
+          POSTGRES_HOST: "{{ database_private_ip }}"
+          POSTGRES_USER: "postgres"
+          POSTGRES_PASSWORD: "postgres"
+
+# ============================================
+# 5. VERIFY DEPLOYMENT
+# ============================================
+- name: Verify all services are running
+  hosts: frontend
+  become: no
+  
+  tasks:
+    - name: Wait for Vote app
+      uri:
+        url: "http://localhost:80"
+        status_code: 200
+      register: vote_result
+      until: vote_result.status == 200
+      retries: 10
+      delay: 5
+
+    - name: Wait for Result app
+      uri:
+        url: "http://localhost:8080"
+        status_code: 200
+      register: result_result
+      until: result_result.status == 200
+      retries: 10
+      delay: 5
+
+    - name: Display deployment summary
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║     ✅ DISTRIBUTED DEPLOYMENT COMPLETE!                      ║
+          ╠══════════════════════════════════════════════════════════════╣
+          ║                                                              ║
+          ║  📍 Frontend EC2 ({{ frontend_public_ip }})                 ║
+          ║     ├── Vote App:  http://{{ frontend_public_ip }}          ║
+          ║     └── Results:   http://{{ frontend_public_ip }}:8080     ║
+          ║                                                              ║
+          ║  📍 Backend EC2 ({{ backend_private_ip }})                  ║
+          ║     ├── Redis:     Port 6379                                ║
+          ║     └── Worker:    Processing votes                         ║
+          ║                                                              ║
+          ║  📍 Database EC2 ({{ database_private_ip }})                ║
+          ║     └── PostgreSQL: Port 5432                               ║
+          ║                                                              ║
+          ╚══════════════════════════════════════════════════════════════╝

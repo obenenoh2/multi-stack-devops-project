@@ -1,0 +1,344 @@
+---
+- name: Configure Frontend EC2 (Vote & Result Apps)
+  hosts: frontend
+  become: yes
+  vars:
+    docker_users:
+      - ec2-user
+    backend_private_ip: "10.0.2.188"
+    database_private_ip: "10.0.2.83"
+    docker_hub_username: "obenenoh2"
+
+  tasks:
+    - name: Update yum cache
+      yum:
+        update_cache: yes
+
+    - name: Install Python3 and pip
+      yum:
+        name:
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Install Python Docker module
+      pip:
+        name:
+          - docker
+          - requests
+        state: present
+        executable: pip3
+
+    - name: Install required packages
+      yum:
+        name:
+          - git
+          - curl
+          - yum-utils
+        state: present
+
+    - name: Add Docker repository
+      command: amazon-linux-extras install docker -y
+      args:
+        creates: /usr/bin/docker
+
+    - name: Install Docker
+      yum:
+        name: docker
+        state: present
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ec2-user to docker group
+      user:
+        name: "{{ item }}"
+        groups: docker
+        append: yes
+      loop: "{{ docker_users }}"
+
+    - name: Install Docker Compose
+      get_url:
+        url: https://github.com/docker/compose/releases/latest/download/docker-compose-Linux-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+
+    - name: Create app directory
+      file:
+        path: /home/ec2-user/voting-app
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: '0755'
+
+    - name: Create docker-compose.yml for frontend
+      copy:
+        dest: /home/ec2-user/voting-app/docker-compose.yml
+        content: |
+          services:
+            vote:
+              image: {{ docker_hub_username }}/vote:latest
+              ports:
+                - "80:80"
+              environment:
+                - REDIS_HOST={{ backend_private_ip }}
+              restart: unless-stopped
+
+            result:
+              image: {{ docker_hub_username }}/result:latest
+              ports:
+                - "8080:80"
+              environment:
+                - POSTGRES_HOST={{ database_private_ip }}
+                - POSTGRES_USER=postgres
+                - POSTGRES_PASSWORD=postgres
+              restart: unless-stopped
+        owner: ec2-user
+        group: ec2-user
+        mode: '0644'
+
+    - name: Pull Docker images
+      docker_image:
+        name: "{{ item }}"
+        source: pull
+      loop:
+        - "{{ docker_hub_username }}/vote:latest"
+        - "{{ docker_hub_username }}/result:latest"
+
+    - name: Start containers with docker-compose
+      docker_compose:
+        project_src: /home/ec2-user/voting-app
+        state: present
+        restarted: yes
+
+- name: Configure Backend EC2 (Redis & Worker)
+  hosts: backend
+  become: yes
+  vars:
+    docker_users:
+      - ec2-user
+    backend_private_ip: "10.0.2.188"
+    database_private_ip: "10.0.2.83"
+    docker_hub_username: "obenenoh2"
+
+  tasks:
+    - name: Update yum cache
+      yum:
+        update_cache: yes
+
+    - name: Install Python3 and pip
+      yum:
+        name:
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Install Python Docker module
+      pip:
+        name:
+          - docker
+          - requests
+        state: present
+        executable: pip3
+
+    - name: Install Docker
+      yum:
+        name: docker
+        state: present
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ec2-user to docker group
+      user:
+        name: "{{ item }}"
+        groups: docker
+        append: yes
+      loop: "{{ docker_users }}"
+
+    - name: Install Docker Compose
+      get_url:
+        url: https://github.com/docker/compose/releases/latest/download/docker-compose-Linux-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+
+    - name: Create app directory
+      file:
+        path: /home/ec2-user/voting-app
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: '0755'
+
+    - name: Create docker-compose.yml for backend
+      copy:
+        dest: /home/ec2-user/voting-app/docker-compose.yml
+        content: |
+          services:
+            redis:
+              image: redis:alpine
+              ports:
+                - "6379:6379"
+              restart: unless-stopped
+
+            worker:
+              image: {{ docker_hub_username }}/worker:latest
+              environment:
+                - REDIS_HOST={{ backend_private_ip }}
+                - POSTGRES_HOST={{ database_private_ip }}
+                - POSTGRES_USER=postgres
+                - POSTGRES_PASSWORD=postgres
+              restart: unless-stopped
+        owner: ec2-user
+        group: ec2-user
+        mode: '0644'
+
+    - name: Pull Docker images
+      docker_image:
+        name: "{{ item }}"
+        source: pull
+      loop:
+        - redis:alpine
+        - "{{ docker_hub_username }}/worker:latest"
+
+    - name: Start containers with docker-compose
+      docker_compose:
+        project_src: /home/ec2-user/voting-app
+        state: present
+        restarted: yes
+
+- name: Configure Database EC2 (PostgreSQL)
+  hosts: database
+  become: yes
+  vars:
+    postgres_user: postgres
+    postgres_password: postgres
+    postgres_db: postgres
+
+  tasks:
+    - name: Update yum cache
+      yum:
+        update_cache: yes
+
+    - name: Install Python3 and pip
+      yum:
+        name:
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Install Python Docker module
+      pip:
+        name:
+          - docker
+          - requests
+        state: present
+        executable: pip3
+
+    - name: Install Docker
+      yum:
+        name: docker
+        state: present
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Install Docker Compose
+      get_url:
+        url: https://github.com/docker/compose/releases/latest/download/docker-compose-Linux-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+
+    - name: Create app directory
+      file:
+        path: /home/ec2-user/voting-app
+        state: directory
+        owner: ec2-user
+        group: ec2-user
+        mode: '0755'
+
+    - name: Create docker-compose.yml for database
+      copy:
+        dest: /home/ec2-user/voting-app/docker-compose.yml
+        content: |
+          services:
+            db:
+              image: postgres:15-alpine
+              ports:
+                - "5432:5432"
+              environment:
+                - POSTGRES_USER={{ postgres_user }}
+                - POSTGRES_PASSWORD={{ postgres_password }}
+                - POSTGRES_DB={{ postgres_db }}
+              volumes:
+                - postgres_data:/var/lib/postgresql/data
+              restart: unless-stopped
+
+          volumes:
+            postgres_data:
+        owner: ec2-user
+        group: ec2-user
+        mode: '0644'
+
+    - name: Pull PostgreSQL image
+      docker_image:
+        name: postgres:15-alpine
+        source: pull
+
+    - name: Start PostgreSQL container
+      docker_compose:
+        project_src: /home/ec2-user/voting-app
+        state: present
+        restarted: yes
+
+    - name: Wait for PostgreSQL to be ready
+      pause:
+        seconds: 15
+
+    - name: Create votes table
+      shell: |
+        docker exec $(docker ps -qf name=db) psql -U {{ postgres_user }} -d {{ postgres_db }} -c "
+        CREATE TABLE IF NOT EXISTS votes (
+          id SERIAL PRIMARY KEY,
+          vote VARCHAR(10) NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );"
+      ignore_errors: yes
+
+- name: Verify Deployment
+  hosts: frontend
+  become: no
+  tasks:
+    - name: Wait for vote app
+      uri:
+        url: http://localhost:80
+        status_code: 200
+      register: vote_result
+      until: vote_result.status == 200
+      retries: 10
+      delay: 5
+
+    - name: Wait for results app
+      uri:
+        url: http://localhost:8080
+        status_code: 200
+      register: result_result
+      until: result_result.status == 200
+      retries: 10
+      delay: 5
+
+    - name: Display success message
+      debug:
+        msg: |
+          ✅ Deployment successful!
+          Vote App: http://44.200.212.23
+          Results: http://44.200.212.23:8080

@@ -45,3 +45,10 @@ variable "availability_zone" {
   type        = string
   default     = "us-east-1a"
 }
+
+# NAT Gateway variables
+variable "nat_gateway_enabled" {
+  description = "Enable NAT Gateway for private subnets"
+  type        = bool
+  default     = true
+}

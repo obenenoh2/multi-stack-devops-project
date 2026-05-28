@@ -1,0 +1,51 @@
+---
+- name: Check deployment status
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Get running containers
+      docker_host_info:
+        containers: yes
+      register: docker_info
+
+    - name: Display containers
+      debug:
+        msg: |
+          {{ inventory_hostname }} ({{ role }}):
+          {% for container in docker_info.containers %}
+          - {{ container.Names | first }}: {{ container.Status }}
+          {% endfor %}
+
+- name: Get vote counts
+  hosts: database
+  become: yes
+  
+  tasks:
+    - name: Query vote counts
+      docker_container:
+        name: vote-check
+        image: postgres:15-alpine
+        command: >
+          psql -h localhost -U postgres -d postgres -t -c
+          "SELECT vote, COUNT(*) FROM votes GROUP BY vote;"
+        detach: no
+        rm: yes
+      register: vote_counts
+      ignore_errors: yes
+
+    - name: Display vote counts
+      debug:
+        msg: "Current Votes: {{ vote_counts.stdout_lines }}"
+      when: vote_counts.stdout is defined
+
+- name: Display URLs
+  hosts: frontend
+  become: no
+  tasks:
+    - name: Show access URLs
+      debug:
+        msg: |
+          🌐 Access your application:
+          Vote App:    http://44.200.212.23
+          Results:     http://44.200.212.23:8080
