@@ -204,3 +204,148 @@ resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private.id
   route_table_id = aws_route_table.private.id
 }
+
+# ============================================
+# LOAD BALANCER CONFIGURATION
+# ============================================
+
+# Second public subnet for multi-AZ
+resource "aws_subnet" "public2" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.3.0/24"
+  availability_zone       = "us-east-1b"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "kingsly-public-subnet2-${var.environment}"
+  }
+}
+
+# Security Group for ALB
+resource "aws_security_group" "alb" {
+  name        = "kingsly-alb-sg-${var.environment}"
+  description = "Security group for ALB"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTP from anywhere"
+  }
+
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Result app HTTP"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "kingsly-alb-sg"
+  }
+}
+
+# Application Load Balancer
+resource "aws_lb" "main" {
+  name               = "kingsly-alb-${var.environment}"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = [aws_subnet.public.id, aws_subnet.public2.id]
+
+  tags = {
+    Name = "kingsly-alb-${var.environment}"
+  }
+}
+
+# Target Group for Vote App
+resource "aws_lb_target_group" "vote" {
+  name     = "kingsly-vote-tg-${var.environment}"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 5
+    interval            = 30
+    path                = "/"
+    matcher             = "200"
+  }
+
+  tags = {
+    Name = "kingsly-vote-tg"
+  }
+}
+
+# Target Group for Result App
+resource "aws_lb_target_group" "result" {
+  name     = "kingsly-result-tg-${var.environment}"
+  port     = 8080
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 5
+    interval            = 30
+    path                = "/"
+    matcher             = "200"
+  }
+
+  tags = {
+    Name = "kingsly-result-tg"
+  }
+}
+
+# Listener for Vote App
+resource "aws_lb_listener" "vote" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.vote.arn
+  }
+}
+
+# Listener for Result App
+resource "aws_lb_listener" "result" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 8080
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.result.arn
+  }
+}
+
+# Attach frontend instance to Vote Target Group
+resource "aws_lb_target_group_attachment" "vote" {
+  target_group_arn = aws_lb_target_group.vote.arn
+  target_id        = aws_instance.frontend.id
+  port             = 80
+}
+
+# Attach frontend instance to Result Target Group
+resource "aws_lb_target_group_attachment" "result" {
+  target_group_arn = aws_lb_target_group.result.arn
+  target_id        = aws_instance.frontend.id
+  port             = 8080
+}

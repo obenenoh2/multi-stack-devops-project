@@ -67,3 +67,52 @@ resource "aws_instance" "database" {
     Role = "database"
   }
 }
+
+# Dedicated Bastion Host
+resource "aws_instance" "bastion" {
+  ami                    = data.aws_ami.amazon_linux_2.id
+  instance_type          = "t2.micro"
+  subnet_id              = aws_subnet.public.id
+  vpc_security_group_ids = [aws_security_group.bastion.id]
+  key_name               = aws_key_pair.kingsly.key_name
+  associate_public_ip_address = true
+
+  user_data = <<-EOF
+    #!/bin/bash
+    sudo amazon-linux-extras install ansible2 -y
+    sudo yum install -y git docker
+    sudo service docker start
+    sudo usermod -a -G docker ec2-user
+  EOF
+
+  tags = {
+    Name = "kingsly-bastion-${var.environment}"
+    Role = "bastion"
+  }
+}
+
+# Security Group for Bastion
+resource "aws_security_group" "bastion" {
+  name        = "kingsly-bastion-sg-${var.environment}"
+  description = "Security group for bastion host"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SSH from anywhere"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "kingsly-bastion-sg"
+  }
+}

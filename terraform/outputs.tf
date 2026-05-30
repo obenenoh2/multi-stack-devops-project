@@ -43,3 +43,20 @@ output "nat_eip" {
   description = "NAT Gateway Elastic IP"
   value       = aws_eip.nat.public_ip
 }
+
+# Load Balancer outputs
+output "alb_dns_name" {
+  description = "ALB DNS name"
+  value       = aws_lb.main.dns_name
+}
+
+output "alb_zone_id" {
+  description = "ALB Zone ID"
+  value       = aws_lb.main.zone_id
+}
+
+# Bastion output
+output "bastion_public_ip" {
+  description = "Bastion host public IP"
+  value       = aws_instance.bastion.public_ip
+}
