@@ -8,6 +8,15 @@ var express = require('express'),
 
 var port = process.env.PORT || 4000;
 
+// Get database configuration from environment variables
+var dbHost = process.env.POSTGRES_HOST || 'db';
+var dbUser = process.env.POSTGRES_USER || 'postgres';
+var dbPassword = process.env.POSTGRES_PASSWORD || 'postgres';
+var dbName = process.env.POSTGRES_DB || 'postgres';
+
+var connectionString = 'postgres://' + dbUser + ':' + dbPassword + '@' + dbHost + '/' + dbName;
+console.log('Connecting to PostgreSQL at: ' + dbHost);
+
 io.on('connection', function (socket) {
 
   socket.emit('message', { text : 'Welcome!' });
@@ -18,7 +27,7 @@ io.on('connection', function (socket) {
 });
 
 var pool = new Pool({
-  connectionString: 'postgres://postgres:postgres@db/postgres'
+  connectionString: connectionString
 });
 
 async.retry(
@@ -41,37 +50,28 @@ async.retry(
 );
 
 function getVotes(client) {
-  client.query('SELECT vote, COUNT(id) AS count FROM votes GROUP BY vote', [], function(err, result) {
+  client.query('SELECT vote, COUNT(*) AS count FROM votes GROUP BY vote', [], function(err, result) {
     if (err) {
       console.error("Error performing query: " + err);
     } else {
       var votes = collectVotesFromResult(result);
       io.sockets.emit("scores", JSON.stringify(votes));
     }
-
-    setTimeout(function() {getVotes(client) }, 1000);
+    setTimeout(function() { getVotes(client); }, 1000);
   });
 }
 
 function collectVotesFromResult(result) {
-  var votes = {a: 0, b: 0};
-
-  result.rows.forEach(function (row) {
+  var votes = { a: 0, b: 0 };
+  result.rows.forEach(function(row) {
     votes[row.vote] = parseInt(row.count);
   });
-
   return votes;
 }
 
 app.use(cookieParser());
-app.use(express.urlencoded());
-app.use(express.static(__dirname + '/views'));
+app.use(express.static('views'));
 
-app.get('/', function (req, res) {
-  res.sendFile(path.resolve(__dirname + '/views/index.html'));
-});
-
-server.listen(port, function () {
-  var port = server.address().port;
+server.listen(port, function(){
   console.log('App running on port ' + port);
 });
