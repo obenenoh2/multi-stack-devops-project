@@ -60,3 +60,14 @@ output "bastion_public_ip" {
   description = "Bastion host public IP"
   value       = aws_instance.bastion.public_ip
 }
+
+# Multi-AZ Frontend IPs
+output "frontend_az1_public_ip" {
+  description = "Frontend AZ1 public IP"
+  value       = aws_instance.frontend_az1.public_ip
+}
+
+output "frontend_az2_public_ip" {
+  description = "Frontend AZ2 public IP"
+  value       = aws_instance.frontend_az2.public_ip
+}

@@ -349,3 +349,31 @@ resource "aws_lb_target_group_attachment" "result" {
   target_id        = aws_instance.frontend.id
   port             = 8080
 }
+
+# Attach AZ1 instance to Vote Target Group
+resource "aws_lb_target_group_attachment" "vote_az1" {
+  target_group_arn = aws_lb_target_group.vote.arn
+  target_id        = aws_instance.frontend_az1.id
+  port             = 80
+}
+
+# Attach AZ2 instance to Vote Target Group
+resource "aws_lb_target_group_attachment" "vote_az2" {
+  target_group_arn = aws_lb_target_group.vote.arn
+  target_id        = aws_instance.frontend_az2.id
+  port             = 80
+}
+
+# Attach AZ1 instance to Result Target Group
+resource "aws_lb_target_group_attachment" "result_az1" {
+  target_group_arn = aws_lb_target_group.result.arn
+  target_id        = aws_instance.frontend_az1.id
+  port             = 8080
+}
+
+# Attach AZ2 instance to Result Target Group
+resource "aws_lb_target_group_attachment" "result_az2" {
+  target_group_arn = aws_lb_target_group.result.arn
+  target_id        = aws_instance.frontend_az2.id
+  port             = 8080
+}

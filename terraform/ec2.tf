@@ -116,3 +116,53 @@ resource "aws_security_group" "bastion" {
     Name = "kingsly-bastion-sg"
   }
 }
+
+# Frontend Instance in AZ1 (us-east-1a)
+resource "aws_instance" "frontend_az1" {
+  ami                    = data.aws_ami.amazon_linux_2.id
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.public.id
+  vpc_security_group_ids = [aws_security_group.frontend.id]
+  key_name               = aws_key_pair.kingsly.key_name
+  associate_public_ip_address = true
+
+  user_data = <<-EOF
+    #!/bin/bash
+    sudo amazon-linux-extras install docker -y
+    sudo service docker start
+    sudo usermod -a -G docker ec2-user
+    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+  EOF
+
+  tags = {
+    Name = "kingsly-frontend-az1-${var.environment}"
+    Role = "frontend"
+    AZ   = "us-east-1a"
+  }
+}
+
+# Frontend Instance in AZ2 (us-east-1b)
+resource "aws_instance" "frontend_az2" {
+  ami                    = data.aws_ami.amazon_linux_2.id
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.public2.id
+  vpc_security_group_ids = [aws_security_group.frontend.id]
+  key_name               = aws_key_pair.kingsly.key_name
+  associate_public_ip_address = true
+
+  user_data = <<-EOF
+    #!/bin/bash
+    sudo amazon-linux-extras install docker -y
+    sudo service docker start
+    sudo usermod -a -G docker ec2-user
+    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+  EOF
+
+  tags = {
+    Name = "kingsly-frontend-az2-${var.environment}"
+    Role = "frontend"
+    AZ   = "us-east-1b"
+  }
+}
