@@ -16,20 +16,25 @@ namespace Worker
         {
             try
             {
-                // Get database configuration from environment variables
-                string dbHost = Environment.GetEnvironmentVariable("POSTGRES_HOST") ?? "db";
-                string dbUser = Environment.GetEnvironmentVariable("POSTGRES_USER") ?? "postgres";
-                string dbPassword = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? "postgres";
-                string dbName = Environment.GetEnvironmentVariable("POSTGRES_DB") ?? "postgres";
+                // Fetch configuration from environment variables
+                var dbHost = Environment.GetEnvironmentVariable("DB_HOST") ?? "db";
+                var dbUsername = Environment.GetEnvironmentVariable("DB_USERNAME") ?? "postgres";
+                var dbPassword = Environment.GetEnvironmentVariable("DB_PASSWORD") ?? "postgres";
+                var dbName = Environment.GetEnvironmentVariable("DB_NAME") ?? "postgres";
                 
-                string redisHost = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "redis";
-                
-                string connectionString = $"Server={dbHost};Username={dbUser};Password={dbPassword};Database={dbName};";
-                Console.WriteLine($"Connecting to PostgreSQL at {dbHost}");
-                Console.WriteLine($"Connecting to Redis at {redisHost}");
-                
-                var pgsql = OpenDbConnection(connectionString);
-                var redisConn = OpenRedisConnection(redisHost);
+                var redisHost = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "redis";
+
+                var useSsl = Environment.GetEnvironmentVariable("DB_SSL") == "true" || Environment.GetEnvironmentVariable("PG_SSL") == "true";
+
+                // Construct the connection strings
+                var pgConnectionString = useSsl
+                    ? $"Server={dbHost};Username={dbUsername};Password={dbPassword};Database={dbName};Ssl Mode=Require;Trust Server Certificate=true"
+                    : $"Server={dbHost};Username={dbUsername};Password={dbPassword};Database={dbName}";
+                Console.WriteLine($"Database connection string: {pgConnectionString}");
+                var redisConnectionString = redisHost;
+
+                var pgsql = OpenDbConnection(pgConnectionString);
+                var redisConn = OpenRedisConnection(redisConnectionString);
                 var redis = redisConn.GetDatabase();
 
                 // Keep alive is not implemented in Npgsql yet. This workaround was recommended:
@@ -44,21 +49,24 @@ namespace Worker
                     Thread.Sleep(100);
 
                     // Reconnect redis if down
-                    if (redisConn == null || !redisConn.IsConnected) {
+                    if (redisConn == null || !redisConn.IsConnected)
+                    {
                         Console.WriteLine("Reconnecting Redis");
-                        redisConn = OpenRedisConnection(redisHost);
+                        redisConn = OpenRedisConnection(redisConnectionString);
                         redis = redisConn.GetDatabase();
                     }
+
                     string json = redis.ListLeftPopAsync("votes").Result;
                     if (json != null)
                     {
                         var vote = JsonConvert.DeserializeAnonymousType(json, definition);
                         Console.WriteLine($"Processing vote for '{vote.vote}' by '{vote.voter_id}'");
+
                         // Reconnect DB if down
                         if (!pgsql.State.Equals(System.Data.ConnectionState.Open))
                         {
                             Console.WriteLine("Reconnecting DB");
-                            pgsql = OpenDbConnection(connectionString);
+                            pgsql = OpenDbConnection(pgConnectionString);
                         }
                         else
                         { // Normal +1 vote requested
@@ -106,7 +114,7 @@ namespace Worker
 
             var command = connection.CreateCommand();
             command.CommandText = @"CREATE TABLE IF NOT EXISTS votes (
-                                        id VARCHAR(255) NOT NULL UNIQUE,
+                                        id VARCHAR(255) NOT NULL,
                                         vote VARCHAR(255) NOT NULL
                                     )";
             command.ExecuteNonQuery();

@@ -1,8 +1,8 @@
 FROM node:18-slim
 
-# add curl for healthcheck
+# add curl for healthcheck and CA certificates for TLS/RDS connections
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl tini && \
+    apt-get install -y --no-install-recommends curl tini ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/local/app
@@ -13,12 +13,19 @@ RUN npm install -g nodemon
 COPY package*.json ./
 
 RUN npm ci && \
- npm cache clean --force && \
- mv /usr/local/app/node_modules /node_modules
+    npm cache clean --force && \
+    mv /usr/local/app/node_modules /node_modules
 
 COPY . .
 
-ENV PORT=80
+# Set default environment variables for both the application and PostgreSQL connection
+ENV PORT=80 \
+    PG_HOST=db \
+    PG_PORT=5432 \
+    PG_USER=postgres \
+    PG_PASSWORD=postgres \
+    PG_DATABASE=postgres
+
 EXPOSE 80
 
 ENTRYPOINT ["/usr/bin/tini", "--"]

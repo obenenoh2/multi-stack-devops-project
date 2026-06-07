@@ -1,0 +1,13 @@
+# Exclude build artifacts and unnecessary files
+bin/
+obj/
+*.md
+*.git
+*.gitignore
+.vscode/
+# Exclude Terraform files
+*.tf
+*.tfvars
+*.tfstate
+*.tfstate.backup
+.terraform/

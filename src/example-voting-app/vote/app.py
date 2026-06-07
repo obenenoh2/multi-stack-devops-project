@@ -6,10 +6,12 @@ import random
 import json
 import logging
 
+# Read options and Redis configuration from environment variables
 option_a = os.getenv('OPTION_A', "Cats")
 option_b = os.getenv('OPTION_B', "Dogs")
+redis_host = os.getenv('REDIS_HOST', 'redis')  # Default to 'redis' for compatibility
+redis_port = int(os.getenv('REDIS_PORT', 6379))  # Default Redis port is 6379
 hostname = socket.gethostname()
-redis_host = os.getenv('REDIS_HOST', 'redis')
 
 app = Flask(__name__)
 
@@ -19,10 +21,11 @@ app.logger.setLevel(logging.INFO)
 
 def get_redis():
     if not hasattr(g, 'redis'):
-        g.redis = Redis(host=redis_host, db=0, socket_timeout=5)
+        g.redis = Redis(host=redis_host, port=redis_port, db=0, socket_timeout=5)
     return g.redis
 
 @app.route("/", methods=['POST','GET'])
+@app.route("/vote", methods=['POST','GET'])
 def hello():
     voter_id = request.cookies.get('voter_id')
     if not voter_id:
@@ -49,4 +52,4 @@ def hello():
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=80, debug=True, threaded=True)
+    app.run(host='0.0.0.0', port=os.getenv('PORT', 80), debug=True, threaded=True)
