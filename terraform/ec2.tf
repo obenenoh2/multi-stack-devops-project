@@ -17,7 +17,7 @@ data "aws_ami" "amazon_linux_2" {
 # Key pair
 resource "aws_key_pair" "kingsly" {
   key_name   = var.key_name
-  public_key = file("~/.ssh/id_rsa.pub")
+  public_key = file("kingsly-key-v2.pub")
 }
 
 # Frontend EC2 Instance (Vote + Result apps)

@@ -19,7 +19,7 @@ variable "instance_type" {
 variable "key_name" {
   description = "SSH key pair name"
   type        = string
-  default     = "kingsly-key"
+  default     = "kingsly-key-v2"
 }
 
 variable "vpc_cidr" {
